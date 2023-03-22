@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Socket.IO chat</title>
+    <style>
+      body {
+        margin: 0;
+        padding-bottom: 3rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+      #name-form {
+        width: 30%;
+        border: 2px solid red;
+        border-radius: 0.5rem;
+        display: block;
+        margin: 0 auto;
+        padding: 50px;
+        text-align: center;
+        margin-top: 12%;
+      }
+      #name-form span {
+        font-size: 30px;
+        font-weight: bold;
+        text-align: center;
+        color: red;
+      }
+      #name-form input {
+        width: 80%;
+        margin: 0 auto;
+        margin-top: 20px;
+        margin-bottom: 20px;
+        border: 2px solid red;
+        display: block;
+      }
+      #name-form button {
+        color: red;
+        padding: 10px;
+      }
+      .main {
+        display: flex;
+      }
+      #one {
+        width: 10%;
+        position: static;
+      }
+      #one div {
+        margin: 0;
+        font-weight: bold;
+        font-size: 40px;
+        color: #3cf0de;
+        text-align: center;
+      }
+      #two {
+        width: 90%;
+      }
+      #chat-form {
+        background: rgba(0, 0, 0, 0.15);
+        padding: 0.25rem;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        height: 3rem;
+        box-sizing: border-box;
+        backdrop-filter: blur(10px);
+      }
+      #input {
+        border: none;
+        padding: 0 1rem;
+        flex-grow: 1;
+        border-radius: 2rem;
+        margin: 0.25rem;
+      }
+      #input:focus {
+        outline: none;
+      }
+      #chat-form > button {
+        background: #333;
+        border: none;
+        padding: 0 1rem;
+        margin: 0.25rem;
+        border-radius: 3px;
+        outline: none;
+        color: #fff;
+      }
+      #messages {
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+      }
+      #messages > li {
+        padding: 0.5rem 1rem;
+      }
+      #messages > li:nth-child(odd) {
+        background: #efefef;
+      }
+      #file-label {
+        margin: 7px;
+      }
+      #file-label i {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="name-form" action="">
+      <label for="username"> <span>Set Nickname</span> </label>
+      <input
+        type="text"
+        name="username"
+        id="username"
+        placeholder="Enter username..."
+        required
+      />
+      <button id="name-btn">Set Name</button>
+      <span id="alert" style="color: red"
+        >You Have logged in with another tab Please Use Only One. If u get Some
+        errors, close all tabs and Reopen!</span
+      >
+    </form>
+    <div class="main">
+      <div id="one">
+        <div>Users</div>
+        <ul id="users"></ul>
+      </div>
+      <div id="two">
+        <ul id="messages"></ul>
+        <div id="chat">
+          <div id="img-preview"></div>
+          <form id="chat-form" action="">
+            <input id="input" autocomplete="off" />
+            <input
+              type="file"
+              id="myFile"
+              name="filename"
+              accept="image/*"
+              hidden
+            />
+            <label id="file-label" for="myFile"
+              ><i class="fa-sharp fa-solid fa-arrow-up-from-bracket"></i
+            ></label>
+            <button id="send-btn">Send</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </body>
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css"
+    integrity="sha512-SzlrxWUlpfuzQ+pcUCosxcglQRNAq/DZjVsC0lE40xsADsfeQoEypE+enwcOiGjk/bSuGGKHEyjSoQ1zVisanQ=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    var socket = io();
+    if (window.localStorage.getItem("user-name")) {
+      window.open("location", "_self", "");
+    }
+    window.addEventListener("beforeunload", function (e) {
+      // Cancel the event
+      e.preventDefault(); // If you prevent default behavior in Mozilla Firefox prompt will always be shown
+      // Chrome requires returnValue to be set
+      window.localStorage.clear();
+      e.returnValue = false;
+    });
+    var nameBtn = document.getElementById("name-btn");
+    var alertMsg = document.getElementById("alert");
+    if (window.localStorage.getItem("user-name")) {
+      alertMsg.style.display = "block";
+      nameBtn.style.display = "none";
+      alertMsg.style.fontSize = "15px";
+    } else {
+      alertMsg.style.display = "none";
+    }
+    var messages = document.getElementById("messages");
+    var users = document.getElementById("users");
+    var one = document.getElementById("one");
+    var two = document.getElementById("two");
+    var nameForm = document.getElementById("name-form");
+    var chat = document.getElementById("chat");
+    var chatForm = document.getElementById("chat-form");
+    var username = document.getElementById("username");
+    var input = document.getElementById("input");
+    var myFile = document.getElementById("myFile");
+    var imagePreview = document.getElementById("img-preview");
+    var msgSendBtn = document.getElementById("send-btn");
+    var fileData = null;
+    var isReply = window.localStorage.getItem("isReply")
+      ? JSON.parse(window.localStorage.getItem("isReply"))
+      : false;
+    var replyMsgId = window.localStorage.getItem("replyMsgId")
+      ? JSON.parse(window.localStorage.getItem("replyMsgId"))
+      : 0;
+    chat.style.display = "none";
+    one.style.display = "none";
+    two.style.display = "none";
+
+    myFile.addEventListener("change", function () {
+      getImgData();
+    });
+
+    function getImgData() {
+      const files = myFile.files[0];
+      if (files) {
+        const fileReader = new FileReader();
+        fileReader.readAsDataURL(files);
+        fileReader.addEventListener("load", function () {
+          input.value = files.name;
+          fileData = this.result;
+        });
+      }
+    }
+
+    nameForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (username.value) {
+        socket.emit("user-name", username.value);
+        nameForm.style.display = "none";
+        chat.style.display = "block";
+        one.style.display = "block";
+        two.style.display = "block";
+        window.localStorage.setItem("user-name", username.value);
+        username.value = "";
+      }
+    });
+
+    chatForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (input.value && !fileData && isReply) {
+        socket.emit("chat-message", input.value, replyMsgId);
+        input.value = "";
+      }
+      if (input.value && !fileData && !isReply) {
+        socket.emit("chat-message", input.value);
+        input.value = "";
+      }
+      if (input.value && fileData && !isReply) {
+        socket.emit("file-message", fileData);
+        input.value = "";
+      }
+      if (input.value && fileData && isReply) {
+        socket.emit("file-message", fileData, replyMsgId);
+        input.value = "";
+      }
+    });
+
+    socket.on("chat-message", function (msgs) {
+      messages.innerHTML = "";
+      msgs.forEach((message) => {
+        var item = !message.file
+          ? document.createElement("li")
+          : document.createElement("div");
+        if (message.file) {
+          item.display = "block";
+          item.innerHTML = '<img src="' + message.file + '" />';
+          item.children[0].style.width = "200px";
+          item.children[0].style.height = "150px";
+        }
+        if (message.isMsg) {
+          var subFunctions = document.createElement("div");
+          var rplyBtn = document.createElement("a");
+          rplyBtn.textContent = "Reply";
+          rplyBtn.style.fontSize = "12px";
+          rplyBtn.style.textDecoration = "underline";
+          rplyBtn.style.cursor = "pointer";
+          rplyBtn.addEventListener("click", function () {
+            isReply = !isReply;
+            window.localStorage.setItem("isReply", isReply);
+            rplyBtn.textContent = isReply ? "Replying......" : "Reply";
+            rplyBtn.style.color = isReply ? "blue" : "black";
+            msgSendBtn.textContent = isReply ? "Reply" : "Send";
+            replyMsgId = message.id;
+            window.localStorage.setItem("replyMsgId", replyMsgId);
+          });
+          if (message.replyMsg) {
+            message.replyMsg.forEach((e, i) => {
+              if (message.replyImg) {
+                var reply = document.createElement("div");
+                reply.innerHTML = '<img src="' + e + '" />';
+                reply.children[0].style.width = "200px";
+                reply.children[0].style.height = "150px";
+              } else {
+                var reply = document.createElement("p");
+                reply.textContent = e;
+              }
+              reply.style.background = "#f0f7d0";
+              reply.style.padding = "10px";
+              reply.style.borderRadius = "1rem";
+              subFunctions.appendChild(reply);
+            });
+          }
+          subFunctions.style.margin = "10px";
+          subFunctions.appendChild(rplyBtn);
+        } else {
+          item.style.color = message.isJoin ? "green" : "red";
+        }
+        if (message.msg) item.textContent = message.msg;
+        if (message.isMsg) item.appendChild(subFunctions);
+        messages.appendChild(item);
+        if (message.file) fileData = null;
+        if (!isReply) window.scrollTo(0, document.body.scrollHeight);
+      });
+    });
+
+    socket.on("replyed", function () {
+      isReply = !isReply;
+      window.localStorage.setItem("isReply", isReply);
+      replyMsgId = 0;
+      window.localStorage.setItem("replyMsgId", replyMsgId);
+      msgSendBtn.textContent = isReply ? "Reply" : "Send";
+    });
+
+    socket.on("total-users", function (usersInfo) {
+      users.innerHTML = "";
+      usersInfo.forEach((e) => {
+        var item = document.createElement("li");
+        item.textContent = e.name;
+        users.appendChild(item);
+      });
+    });
+  </script>
+</html>
